@@ -1,5 +1,7 @@
 # C Pocket MCP / C 的口袋
 
+> 2.7.0 增加 [Jiwen 持续状态引擎](docs/jiwen-engine.md)：状态与待投递事件独立保存在数据卷的 `jiwen/` 子目录，不改变 Pocket 分享、RSS、媒体或 C-Memory 数据格式。
+
 [![GitHub Release](https://img.shields.io/github/v/release/bella-and-c/c-pocket-mcp?display_name=tag)](https://github.com/bella-and-c/c-pocket-mcp/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 

@@ -13,8 +13,9 @@ import { createPocketMcpServer } from './mcp-server.js'
 import { normalizeIncomingShare } from './share-normalizer.js'
 import { PocketRssReader } from './rss-reader.js'
 import { RssStore } from './rss-store.js'
+import { JiwenService } from './jiwen-service.js'
 
-const SERVICE_VERSION = '2.6.0'
+const SERVICE_VERSION = '2.7.0'
 
 export async function createBridgeApp(config = {}) {
   const root = path.dirname(fileURLToPath(import.meta.url))
@@ -33,6 +34,9 @@ export async function createBridgeApp(config = {}) {
   await store.init()
   const rssStore = new RssStore(settings.dataDir)
   await rssStore.init()
+  const jiwen = new JiwenService({ dataDir: settings.dataDir, config: config.jiwenOptions })
+  await jiwen.init()
+  jiwen.start()
   const cmemory = new CMemoryClient({ baseUrl: settings.cmemoryBaseUrl, token: settings.cmemoryToken })
   const contentReader = new PocketContentReader({
     store,
@@ -83,7 +87,8 @@ export async function createBridgeApp(config = {}) {
       service: 'c-pocket-mcp',
       version: SERVICE_VERSION,
       storeReady: Array.isArray(items),
-      capabilities: { linkContent: true, images: true, videoKeyframes: true, rss: true },
+      jiwen: jiwen.ready,
+      capabilities: { linkContent: true, images: true, videoKeyframes: true, rss: true, jiwen: true },
     })
   })
 
@@ -219,7 +224,7 @@ export async function createBridgeApp(config = {}) {
         transport.onclose = () => {
           if (transport.sessionId) transports.delete(transport.sessionId)
         }
-        const server = createPocketMcpServer({ store, cmemory, contentReader, rssStore, rssReader })
+        const server = createPocketMcpServer({ store, cmemory, contentReader, rssStore, rssReader, jiwen })
         await server.connect(transport)
       }
       await transport.handleRequest(req, res, req.body)
@@ -252,9 +257,11 @@ export async function createBridgeApp(config = {}) {
     contentReader,
     rssStore,
     rssReader,
+    jiwen,
     async close() {
       await Promise.allSettled([...transports.values()].map((transport) => transport.close()))
       transports.clear()
+      await jiwen.stop()
     },
   }
 }

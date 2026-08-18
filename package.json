@@ -1,6 +1,6 @@
 {
   "name": "c-pocket-mcp",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "An iPhone Share Sheet to MCP inbox that lets an AI companion notice and discuss what you share.",
   "private": false,
   "type": "module",
@@ -16,11 +16,13 @@
     "start": "node --env-file-if-exists=.env server/index.js",
     "dev": "node --env-file-if-exists=.env server/index.js --temporary-public-mcp",
     "lint": "eslint server",
-    "test": "node server/smoke-test.js",
+    "test": "node server/smoke-test.js && node server/jiwen-service.test.js",
+    "test:jiwen": "node server/jiwen-service.test.js",
     "check": "npm run lint && npm test",
     "production:check": "node --env-file-if-exists=deploy/.env.production server/production-config-check.js"
   },
   "dependencies": {
+    "@clarashafiq/jiwen": "^0.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "express": "^5.2.1",
     "multer": "^2.2.0",
