@@ -42,8 +42,13 @@ try {
       ffprobePath: 'missing-smoke-ffprobe',
     },
     rssReaderOptions: { allowPrivateHosts: true },
+    jiwenOptions: { proactive: { quietHours: { start: '00:00', end: '00:00' } } },
   })
   const baseUrl = `http://127.0.0.1:${bridge.address.port}`
+  const health = await fetch(`${baseUrl}/health`).then(checkJson)
+  assert.equal(health.version, '2.7.0')
+  assert.equal(health.jiwen, true)
+  assert.equal(health.capabilities.jiwen, true)
   const source = {
     id: 'smoke-item',
     title: '给 C 看',
@@ -70,6 +75,15 @@ try {
     'memory_health',
     'memory_turn_post',
     'memory_turn_pre',
+    'jiwen_ack_trigger',
+    'jiwen_apply_delta',
+    'jiwen_guidance',
+    'jiwen_history',
+    'jiwen_pending_triggers',
+    'jiwen_record_interaction',
+    'jiwen_set_activity',
+    'jiwen_set_user_status',
+    'jiwen_status',
     'pocket_get',
     'pocket_list',
     'pocket_read_content',
@@ -87,7 +101,41 @@ try {
     'search',
     'fetch',
   ].sort())
+  const jiwenTools = tools.tools.filter((tool) => tool.name.startsWith('jiwen_'))
+  assert.equal(jiwenTools.length, 9)
+  assert.equal(jiwenTools.every((tool) => tool.inputSchema && tool.outputSchema), true)
   assert.equal(names.some((name) => /ledger|training|health_room/.test(name)), false)
+
+  const jiwenStatus = await client.callTool({ name: 'jiwen_status', arguments: {} })
+  assert.equal(typeof jiwenStatus.structuredContent.state.connection, 'number')
+  assert.equal(jiwenStatus.structuredContent.userStatus, 'active')
+  const reactiveGuidance = await client.callTool({ name: 'jiwen_guidance', arguments: { mode: 'reactive' } })
+  assert.match(reactiveGuidance.structuredContent.promptContext, /持续状态/)
+  assert.match(reactiveGuidance.structuredContent.styleGuidance, /安全规则/)
+  await client.callTool({ name: 'jiwen_set_user_status', arguments: { status: 'active' } })
+  await client.callTool({ name: 'jiwen_set_activity', arguments: { activity: 'rest', label: 'smoke test' } })
+  await client.callTool({ name: 'jiwen_apply_delta', arguments: { connection: 0.2, valence: 0.01, immersion: 0.01 } })
+  await client.callTool({ name: 'jiwen_apply_delta', arguments: { connection: 0.2 } })
+  await bridge.jiwen.tick({ elapsedMinutes: 5 })
+  const pendingJiwen = await client.callTool({ name: 'jiwen_pending_triggers', arguments: { action: 'contact', limit: 1 } })
+  assert.equal(pendingJiwen.structuredContent.events.length, 1)
+  const jiwenAck = await client.callTool({
+    name: 'jiwen_ack_trigger',
+    arguments: { id: pendingJiwen.structuredContent.events[0].id, status: 'delivered', delivery_channel: 'smoke-test' },
+  })
+  assert.equal(jiwenAck.structuredContent.duplicate, false)
+  const jiwenAckAgain = await client.callTool({
+    name: 'jiwen_ack_trigger',
+    arguments: { id: pendingJiwen.structuredContent.events[0].id, status: 'delivered', delivery_channel: 'smoke-test' },
+  })
+  assert.equal(jiwenAckAgain.structuredContent.duplicate, true)
+  const jiwenReply = await client.callTool({
+    name: 'jiwen_record_interaction',
+    arguments: { type: 'user_reply', signal_text: '我回来啦', message_id: 'smoke-user-reply' },
+  })
+  assert.equal(jiwenReply.structuredContent.state.connection, 0)
+  const jiwenHistory = await client.callTool({ name: 'jiwen_history', arguments: { limit: 20 } })
+  assert.ok(jiwenHistory.structuredContent.entries.length > 0)
 
   const rssFeed = await client.callTool({
     name: 'rss_add_feed',
