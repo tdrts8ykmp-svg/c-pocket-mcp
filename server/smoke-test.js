@@ -71,6 +71,11 @@ try {
   const tools = await client.listTools()
   const names = tools.tools.map((tool) => tool.name)
   assert.deepEqual(names.sort(), [
+    'detroit_start_game',
+    'detroit_get_scene',
+    'detroit_choose_action',
+    'detroit_continue_game',
+    'detroit_get_history',
     'memory_confirm_surface',
     'memory_health',
     'memory_turn_post',

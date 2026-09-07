@@ -16,7 +16,7 @@
     "start": "node --env-file-if-exists=.env server/index.js",
     "dev": "node --env-file-if-exists=.env server/index.js --temporary-public-mcp",
     "lint": "eslint server",
-    "test": "node server/smoke-test.js && node server/jiwen-service.test.js",
+    "test": "node server/smoke-test.js && node server/jiwen-service.test.js && node server/detroit-service.test.js",
     "test:jiwen": "node server/jiwen-service.test.js",
     "check": "npm run lint && npm test",
     "production:check": "node --env-file-if-exists=deploy/.env.production server/production-config-check.js"

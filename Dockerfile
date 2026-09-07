@@ -7,7 +7,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-RUN apk add --no-cache su-exec ffmpeg
+RUN apk add --no-cache su-exec ffmpeg python3
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force

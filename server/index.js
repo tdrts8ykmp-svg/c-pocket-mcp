@@ -14,6 +14,7 @@ import { normalizeIncomingShare } from './share-normalizer.js'
 import { PocketRssReader } from './rss-reader.js'
 import { RssStore } from './rss-store.js'
 import { JiwenService } from './jiwen-service.js'
+import { DetroitService } from './detroit-service.js'
 
 const SERVICE_VERSION = '2.7.0'
 
@@ -34,6 +35,8 @@ export async function createBridgeApp(config = {}) {
   await store.init()
   const rssStore = new RssStore(settings.dataDir)
   await rssStore.init()
+  const detroit = new DetroitService({ dataDir: settings.dataDir, pythonPath: config.detroitPythonPath })
+  try { await detroit.init() } catch { /* Game availability must not interrupt Pocket or RSS. */ }
   const jiwen = new JiwenService({ dataDir: settings.dataDir, config: config.jiwenOptions })
   await jiwen.init()
   jiwen.start()
@@ -88,7 +91,7 @@ export async function createBridgeApp(config = {}) {
       version: SERVICE_VERSION,
       storeReady: Array.isArray(items),
       jiwen: jiwen.ready,
-      capabilities: { linkContent: true, images: true, videoKeyframes: true, rss: true, jiwen: true },
+      capabilities: { linkContent: true, images: true, videoKeyframes: true, rss: true, jiwen: true, detroit: detroit.ready },
     })
   })
 
@@ -224,7 +227,7 @@ export async function createBridgeApp(config = {}) {
         transport.onclose = () => {
           if (transport.sessionId) transports.delete(transport.sessionId)
         }
-        const server = createPocketMcpServer({ store, cmemory, contentReader, rssStore, rssReader, jiwen })
+        const server = createPocketMcpServer({ store, cmemory, contentReader, rssStore, rssReader, jiwen, detroit })
         await server.connect(transport)
       }
       await transport.handleRequest(req, res, req.body)

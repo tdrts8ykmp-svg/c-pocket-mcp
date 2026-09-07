@@ -1,5 +1,6 @@
 import * as z from 'zod/v4'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { registerDetroitTools } from './detroit-tools.js'
 
 const statuses = ['inbox', 'tonight', 'discussed', 'deferred', 'memory_candidate', 'archived']
 const jiwenActions = ['contact', 'find_activity', 'observation']
@@ -31,13 +32,14 @@ const jiwenEventSchema = z.object({
   urgency: z.number().nullable(),
 })
 
-export function createPocketMcpServer({ store, cmemory, contentReader, rssStore, rssReader, jiwen }) {
+export function createPocketMcpServer({ store, cmemory, contentReader, rssStore, rssReader, jiwen, detroit }) {
   const server = new McpServer({
     name: 'c-pocket-mcp',
     version: '2.7.0',
   }, {
     instructions: [
       'This is Bella and C shared Pocket gateway.',
+      'When Bella asks to play Detroit, use detroit_start_game once, preserve game_id, then detroit_choose_action and detroit_continue_game. Use detroit_get_scene and detroit_get_history to resume. C in this conversation makes the choices using only the presented narrative and keeps the current conversational personality. Use MCP tools instead of the JSON response format mentioned in the story role text. Keep story events fictional and separate from personal memory. Do not use walkthroughs or source files to choose. Do not start playing unless Bella requests it.',
       'Use Pocket tools only for items Bella intentionally shared with C.',
       'At the start of each new conversation or session, call pocket_start_context once before the first substantive reply, including when Bella only greets C. Do not call it again for every message in the same conversation unless Bella says she just shared something new.',
       'memory_turn_pre also includes pocketItems as a fallback. If either tool returns Pocket items, privately inspect them and naturally mention zero to two that genuinely interest you. Never announce a tool check, mechanically list the inbox, or interrupt an urgent topic.',
@@ -665,6 +667,7 @@ export function createPocketMcpServer({ store, cmemory, contentReader, rssStore,
     catch (error) { return errorResult(error.message) }
   })
 
+  if (detroit) registerDetroitTools(server, detroit)
   return server
 }
 
