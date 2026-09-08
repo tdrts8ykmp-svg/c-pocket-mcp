@@ -33,6 +33,12 @@ Jiwen 是同一个 ChatGPT 伴侣的持续内部状态，不创建新角色或�
 
 没有清空全部状态的工具。`jiwen_apply_delta` 对每一轴做服务端单次幅度校验。只有 `jiwen_record_interaction(type="user_reply")` 会完全重置 connection；主动消息或成功投递 contact 只做配置中的部分缓解。
 
+`user_reply` 不再隐式调整 pride、arousal、valence 或 immersion，四轴原始数值严格保持不变。
+普通回复保留当前用户状态；明确的 `signal_text` 忙碌／睡眠信号会更新相应状态和安静期，正文不持久化。
+新交互继续更新时间戳、重置连接事件锁存并追加精简历史。相同 `type + message_id` 在保留的历史范围内
+去重（默认最近 500 条历史，包含其他历史类型），返回 `recorded=false`，不重复改动状态、时间戳或历史；
+去重跨重启有效。未提供 `message_id` 的调用各自记录。本修复不迁移或补偿已有五轴数值。
+
 ## ChatGPT 主动联系消费者
 
 ChatGPT 侧消费者只需执行：
