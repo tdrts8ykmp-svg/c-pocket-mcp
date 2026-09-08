@@ -81,10 +81,6 @@ export const JIWEN_CONFIG = Object.freeze({
     connectionRelief: 0.24,
     deliveryChannel: 'chatgpt',
   },
-  replyRecovery: {
-    pride: -0.06,
-    arousal: -0.08,
-  },
   deltaLimits: {
     connection: 0.20,
     pride: 0.15,

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -134,11 +134,31 @@ try {
     arguments: { id: pendingJiwen.structuredContent.events[0].id, status: 'delivered', delivery_channel: 'smoke-test' },
   })
   assert.equal(jiwenAckAgain.structuredContent.duplicate, true)
-  const jiwenReply = await client.callTool({
+  // Isolate interaction effects from the independent background clock.
+  await bridge.jiwen.stop()
+  const readJiwen = async () => JSON.parse(await readFile(path.join(dataDir, 'jiwen', 'state.json'), 'utf8'))
+  for (let index = 0; index < 5; index += 1) {
+    const before = await readJiwen()
+    const jiwenReply = await client.callTool({
+      name: 'jiwen_record_interaction',
+      arguments: { type: 'user_reply', signal_text: '普通测试消息', message_id: `smoke-user-reply-${index}` },
+    })
+    assert.notEqual(jiwenReply.isError, true)
+    assert.equal(jiwenReply.structuredContent.recorded, true)
+    assert.equal(jiwenReply.structuredContent.state.connection, 0)
+    const after = await readJiwen()
+    assert.deepEqual(after.engineState, { ...before.engineState, connection: 0 })
+    assert.ok(Date.parse(after.meta.lastInteractionAt) >= Date.parse(before.meta.lastInteractionAt || before.meta.createdAt))
+  }
+  const beforeDuplicate = await readJiwen()
+  const duplicateReply = await client.callTool({
     name: 'jiwen_record_interaction',
-    arguments: { type: 'user_reply', signal_text: '我回来啦', message_id: 'smoke-user-reply' },
+    arguments: { type: 'user_reply', signal_text: '晚安', message_id: 'smoke-user-reply-0' },
   })
-  assert.equal(jiwenReply.structuredContent.state.connection, 0)
+  assert.notEqual(duplicateReply.isError, true)
+  assert.equal(duplicateReply.structuredContent.recorded, false)
+  assert.deepEqual(await readJiwen(), beforeDuplicate)
+  console.log('PASS MCP user_reply 5/5: raw four-axis invariance, connection reset, timestamps and duplicate no-op')
   const jiwenHistory = await client.callTool({ name: 'jiwen_history', arguments: { limit: 20 } })
   assert.ok(jiwenHistory.structuredContent.entries.length > 0)
 

@@ -131,14 +131,23 @@ export class JiwenService {
       this.assertReady()
       if (!INTERACTION_TYPES.has(type)) throw new Error('Unsupported interaction type.')
       const occurredAt = asDate(at)
+      // Reuse persisted history so retries remain no-ops across service restarts.
+      if (messageId && this.document.history.some((entry) => entry.kind === 'interaction'
+        && entry.details.interactionType === type && entry.details.messageId === messageId)) {
+        return {
+          recorded: false,
+          state: snapshot(await this.engine.getState()),
+          slowGrowthUntil: this.document.meta.slowGrowthUntil,
+        }
+      }
       return this.transaction(async () => {
         const before = await this.engine.getState()
         const quietSignal = detectQuietSignal(signalText, this.config.quietSignals)
 
         if (type === 'user_reply') {
+          // A reply relieves connection only; the other four axes stay exact.
           await this.engine.resetConnection()
-          await this.engine.applyDelta(this.config.replyRecovery)
-          await this.engine.setUserStatus('active')
+          if (quietSignal) await this.engine.setUserStatus(quietSignal)
           this.document.meta.lastUserReplyAt = occurredAt.toISOString()
           this.document.meta.lastInteractionAt = occurredAt.toISOString()
           this.document.meta.latches = {}

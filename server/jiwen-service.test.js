@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { JiwenService } from './jiwen-service.js'
@@ -13,6 +13,9 @@ try {
   await testBusyAndSleepingSuppressContact()
   await testContactThresholdAndPrideBlock()
   await testReplyAndProactiveRelief()
+  await testReplyPreservesRawState()
+  await testReplyExplicitSignals()
+  await testReplyDeduplication()
   await testAckIsIdempotent()
   await testMinimumIntervalAndDailyLimit()
   await testQuietHoursSuppressContact()
@@ -121,6 +124,90 @@ async function testReplyAndProactiveRelief() {
   await proactive.stop()
 }
 
+async function testReplyPreservesRawState() {
+  for (const userStatus of ['active', 'busy', 'sleeping']) {
+    const fixture = await createFixture({ initialState: {
+      connection: 0.543210987, pride: -0.234567891, arousal: 0.765432198,
+      valence: -0.345678912, immersion: 0.456789123, userStatus, activity: 'reading',
+    } })
+    const service = await fixture.service()
+    for (let index = 0; index < 5; index += 1) {
+      const before = await fixture.readDocument()
+      fixture.advance(1)
+      const result = await service.recordInteraction({
+        type: 'user_reply', signalText: index % 2 ? '普通测试消息' : '',
+        ...(index < 3 ? { messageId: `reply-${index}` } : {}),
+      })
+      const after = await fixture.readDocument()
+      assert.equal(result.recorded, true)
+      assert.deepEqual(after.engineState, { ...before.engineState, connection: 0 },
+        `reply ${index + 1} (${userStatus}): raw state may only change connection`)
+      assert.deepEqual(after.meta, {
+        ...before.meta, updatedAt: fixture.now().toISOString(),
+        lastInteractionAt: fixture.now().toISOString(), lastUserReplyAt: fixture.now().toISOString(), latches: {},
+      }, 'ordinary replies may only update interaction timestamps and reset connection latches')
+      assert.deepEqual(after.events, before.events)
+      assert.equal(after.history.length, before.history.length + 1)
+      assert.equal((await service.status()).lastInteractionAt, fixture.now().toISOString())
+      console.log(`PASS user_reply ${userStatus} ${index + 1}/5: raw pride/arousal/valence/immersion unchanged; connection=0`)
+    }
+    await service.stop()
+  }
+}
+
+async function testReplyExplicitSignals() {
+  const fixture = await createFixture()
+  const service = await fixture.service()
+  for (const [signalText, userStatus, duration] of [
+    ['我在忙，去开会', 'busy', 240], ['晚安，我去睡觉了', 'sleeping', 540],
+  ]) {
+    const before = await fixture.readDocument()
+    fixture.advance(1)
+    await service.recordInteraction({ type: 'user_reply', signalText })
+    const after = await fixture.readDocument()
+    assert.deepEqual(after.engineState, { ...before.engineState, connection: 0, userStatus })
+    assert.deepEqual(after.meta, {
+      ...before.meta, updatedAt: fixture.now().toISOString(),
+      lastInteractionAt: fixture.now().toISOString(), lastUserReplyAt: fixture.now().toISOString(), latches: {},
+      quietReason: userStatus, slowGrowthUntil: new Date(fixture.now().getTime() + duration * 60_000).toISOString(),
+    })
+    assert.deepEqual(after.events, before.events)
+    assert.equal(after.history.at(-1).details.quietSignal, userStatus)
+    assert.equal(JSON.stringify(after).includes(signalText), false, 'signal text must not be persisted')
+    fixture.advance(1)
+    await service.recordInteraction({ type: 'user_reply', signalText: '普通测试消息' })
+    const ordinary = await fixture.readDocument()
+    assert.deepEqual(ordinary.engineState, after.engineState)
+    assert.equal(ordinary.meta.slowGrowthUntil, after.meta.slowGrowthUntil)
+    assert.equal(ordinary.meta.quietReason, after.meta.quietReason)
+  }
+  await service.stop()
+  console.log('PASS explicit busy/sleeping signals; ordinary replies preserve status and quiet metadata')
+}
+
+async function testReplyDeduplication() {
+  const fixture = await createFixture()
+  const service = await fixture.service()
+  const request = { type: 'user_reply', messageId: 'deduplicated-reply', signalText: '普通测试消息' }
+  const results = await Promise.all([service.recordInteraction(request), service.recordInteraction(request)])
+  assert.deepEqual(results.map((result) => result.recorded), [true, false])
+  // Advance the fixture clock without a tick; duplicate calls must not persist anything.
+  fixture.advance(1)
+  const before = await fixture.readDocument()
+  const duplicate = await service.recordInteraction({ ...request, signalText: '晚安' })
+  assert.equal(duplicate.recorded, false)
+  assert.deepEqual(await fixture.readDocument(), before)
+  await service.stop()
+  const restarted = await fixture.service()
+  const afterRestart = await fixture.readDocument()
+  assert.equal((await restarted.recordInteraction(request)).recorded, false)
+  assert.deepEqual(await fixture.readDocument(), afterRestart, 'deduplication must survive restart')
+  assert.equal((await restarted.recordInteraction({ ...request, type: 'user_appeared' })).recorded, true,
+    'message deduplication must be scoped by interaction type')
+  await restarted.stop()
+  console.log('PASS duplicate/concurrent/restarted user_reply: no extra state, timestamp, signal or history writes')
+}
+
 async function testAckIsIdempotent() {
   const fixture = await createFixture({ initialState: { connection: 0.50, pride: 0.10, immersion: 0, activity: 'rest' } })
   const service = await fixture.service()
@@ -209,6 +296,7 @@ async function createFixture(config = {}, start = new Date('2026-08-18T04:00:00.
   roots.push(root)
   let current = new Date(start)
   return {
+    readDocument: async () => JSON.parse(await readFile(path.join(root, 'jiwen', 'state.json'), 'utf8')),
     now: () => new Date(current),
     advance(minutes) { current = new Date(current.getTime() + minutes * 60_000) },
     async service() {
