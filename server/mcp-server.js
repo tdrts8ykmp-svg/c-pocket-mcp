@@ -492,7 +492,7 @@ export function createPocketMcpServer({ store, cmemory, contentReader, rssStore,
 
   server.registerTool('jiwen_record_interaction', {
     title: 'Record a Jiwen interaction',
-    description: 'Record a user appearance, real user reply, conversation end, or proactive message. Only a real user_reply resets connection. signal_text is inspected for busy/sleeping cues and is not stored in history.',
+    description: 'Record a user appearance, real user reply, conversation end, or proactive message. Only a real user_reply resets connection; pride, arousal, valence and immersion remain unchanged. Explicit signal_text can set busy/sleeping status and is not stored in history. Matching type and message_id retries are ignored while retained in history.',
     inputSchema: {
       type: z.enum(jiwenInteractionTypes),
       signal_text: z.string().max(500).default(''),
@@ -507,7 +507,8 @@ export function createPocketMcpServer({ store, cmemory, contentReader, rssStore,
   }, async ({ type, signal_text, message_id }) => {
     try {
       const recorded = await jiwen.recordInteraction({ type, signalText: signal_text, messageId: message_id })
-      return result(recorded, type === 'user_reply' ? 'Real user reply recorded; connection reset.' : 'Jiwen interaction recorded.')
+      return result(recorded, !recorded.recorded ? 'Duplicate Jiwen interaction ignored.'
+        : type === 'user_reply' ? 'Real user reply recorded; connection reset.' : 'Jiwen interaction recorded.')
     } catch (error) {
       return errorResult(error.message)
     }
